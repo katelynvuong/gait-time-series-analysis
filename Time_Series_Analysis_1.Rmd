@@ -1,0 +1,169 @@
+---
+title: "Gait_Analysis_1"
+author: "Katelyn Vuong"
+output: html_document
+---
+
+```{r}
+#read data
+rundata = read.table("HuGaDB_v2_various_09_16.txt", header = TRUE)
+head(rundata, 3)
+```
+
+We will visualize the time series data of the RF and LF accelerometer and gyroscope time series data. 
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+#PLOTS FOR GAIT DYNAMIC TIME SERIES
+
+#choose a chunk of the data
+start = 1
+end = 500
+sampledata = rundata[start:end,]
+
+#plot right foot accelerator
+color_XYZ = c("X" = "red", "Y" = "green", "Z" = "blue")
+p_acc_rf = ggplot(sampledata, aes(x = start:end)) +
+  geom_line(aes(y = acc_rf_x, color = "X")) +
+  geom_line(aes(y = acc_rf_y, color = "Y")) +
+  geom_line(aes(y = acc_rf_z, color = "Z")) +
+  scale_color_manual("Direction", values = color_XYZ) + 
+  labs(x = "Time",
+       y = "Signal",
+       title = "RF accelerator") +
+  theme_bw()
+
+
+#plot right foot gyroscope
+p_gyro_rf = ggplot(sampledata, aes(x=start:end)) +
+  geom_line(aes(y = gyro_rf_x, color = "X")) +
+  geom_line(aes(y = gyro_rf_y, color = "Y")) +
+  geom_line(aes(y = gyro_rf_z, color = "Z")) +
+  scale_color_manual("Direction", values = color_XYZ) +
+  labs(x= "Time", y= "Signal", title = "RF gyroscope") +
+  theme_bw()
+
+#plot left foot accelerator
+p_acc_lf = ggplot(sampledata, aes(x=start:end)) +
+  geom_line(aes(y = acc_lf_x, color = "X")) +
+  geom_line(aes(y = acc_lf_y, color = "Y")) +
+  geom_line(aes(y = acc_lf_z, color = "Z")) +
+  scale_color_manual("Direction", values = color_XYZ) +
+  labs(x= "Time", y= "Signal", title = "LF accelerator") +
+  theme_bw()
+
+#plot left foot gyroscope
+p_gyro_lf = ggplot(sampledata, aes(x=start:end)) +
+  geom_line(aes(y = gyro_lf_x, color = "X")) +
+  geom_line(aes(y = gyro_lf_y, color = "Y")) +
+  geom_line(aes(y = gyro_lf_z, color = "Z")) +
+  scale_color_manual("Direction", values = color_XYZ) +
+  labs(x= "Time", y= "Signal", title = "LF gyroscope") +
+  theme_bw() 
+
+grid.arrange(p_acc_rf, p_gyro_rf, p_acc_lf, p_gyro_lf, ncol = 1)
+```
+
+Now we will cluster the data points using hierarchical clustering and Ward's minimum variance method. We want to cluster the data based on the similarity of the time series of the RF acc in the X, Y, Z dimensions. 
+
+```{r}
+#HIERARCHICAL CLUSTERING
+
+#HC on X, Y, Z time series from the RF accelerator data using Ward's minimum variance method 
+
+hc_acc_rf_x = hclust(dist(sampledata$acc_rf_x), method = "ward.D2")
+plot(hc_acc_rf_x)
+rect.hclust(hc_acc_rf_x, k =3, border = 2:4)
+
+hc_acc_rf_y = hclust(dist(sampledata$acc_rf_y), method = "ward.D2")
+hc_acc_rf_z = hclust(dist(sampledata$acc_rf_z), method = "ward.D2")
+
+#HC on the triplet time series (X,Y,Z) from the RF accelerator data
+hc_acc_rf = hclust(dist(sampledata[,1:3]), method = "ward.D2")
+plot(hc_acc_rf)
+rect.hclust(hc_acc_rf, k =3, border = 2:4)
+
+```
+Now we will encode digital code sequences in the RF accelerometer in X, Y, Z dimensions. This gives us a set of visualizations that display how the state sequences evolve over time for each dimension. 
+
+```{r}
+library(dplyr)
+#DIGITAL-CODING
+
+#encoding the three separate series and the triplet time series
+state_acc_rf = data.frame(x = cutree(hc_acc_rf_x, 3),
+                          y = cutree(hc_acc_rf_y, 3),
+                          z = cutree(hc_acc_rf_z, 3),
+                          hc27 = cutree(hc_acc_rf, 27),
+                          hc10 = cutree(hc_acc_rf, 10))
+#naturally combine the three digital code sequences from X, Y, Z
+nc = apply(state_acc_rf,1,  function(x) paste(x[1], x[2], x[3], sep=","))
+state_acc_rf$nc = as.numeric(factor(nc, labels = 1:n_distinct(nc)))
+head(state_acc_rf)
+```
+
+```{r}
+#RESULTANT CODE SEQUENCES
+
+#3-state code sequence for X,Y,Z RF accelerator time series
+p_st_x = ggplot(state_acc_rf, aes(x = start:end, y=x, color = "X")) +
+  geom_line() +
+  scale_color_manual(values = color_XYZ)+
+  labs(x = "Time", y="State", title = "RF acc X") +
+       theme_classic() + 
+       theme(legend.position = "none")
+
+p_st_y = ggplot(state_acc_rf, aes(x = start:end, y=y, color = "Y")) +
+  geom_line() +
+  scale_color_manual(values = color_XYZ)+
+  labs(x = "Time", y="State", title = "RF acc Y") +
+       theme_classic() + 
+       theme(legend.position = "none")
+
+p_st_z = ggplot(state_acc_rf, aes(x = start:end, y=z, color = "Z")) +
+  geom_line() +
+  scale_color_manual(values = color_XYZ)+
+  labs(x = "Time", y="State", title = "RF acc Z") +
+       theme_classic() + 
+       theme(legend.position = "none")
+
+grid.arrange(p_st_x, p_st_y, p_st_z)
+```
+
+We will create additional plots to visualize the naturally combiined code sequence and two different clustered code sequences. This visualizes how the states evolve over time in different code sequences from the RF accelerometer data. 
+
+```{r}
+#naturally combined code sequence
+
+p_nc = ggplot(state_acc_rf, aes(x = start:end, y = nc)) +
+  geom_line(color = "orange") +
+  labs( x = "Time", 
+        y = "State",
+        title = "Naturally-combinate (X,Y,Z)") +
+  theme_classic()
+
+#27-state code sequence for the triplet time series
+p_hc27 = ggplot(state_acc_rf, aes(x = start:end, y = hc27)) +
+  geom_line(color = "darkgreen") +
+  labs( x = "Time", 
+        y = "State",
+        title = "Clustering-combinate (X,Y,Z), state: 27") +
+  theme_classic()
+
+p_hc10 = ggplot(state_acc_rf, aes(x = start:end, y = hc10)) +
+  geom_line(color = "darkblue") +
+  labs( x = "Time", 
+        y = "State",
+        title = "Clustering-combinate (X,Y,Z), state: 10") +
+  theme_classic()
+
+grid.arrange(p_nc, p_hc27, p_hc10)
+
+```
+
+
+
+
+
+
