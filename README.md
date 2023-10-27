@@ -2,7 +2,7 @@
 
 Undergrad Research with Professor Hsieh
 
-Collected running gait data on self using six sensors, will aim to eventually apply analysis tools that I learned on this data to gain insights on my own running gait
+Collected running gait data on self using six sensors, will aim to eventually apply analysis tools that I learned from other running data to gain insights on my own running gait
 
 Analyzed other sensor data provided by Fushing's PhD student, Xi, to practice data visualization and analysis first:
 - plotting accelerometer and gyroscope data
