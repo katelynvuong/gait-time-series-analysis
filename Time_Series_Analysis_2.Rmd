@@ -1,0 +1,221 @@
+---
+title: "Gait_Analysis_2"
+author: "Katelyn Vuong"
+output: html_document
+---
+
+```{r}
+#read data
+rundata = read.table("HuGaDB_v2_various_09_16.txt", header = TRUE)
+
+```
+
+
+This function takes a digital-coding sequence and a weight as inputs and aims to find landmarks to partition the time series data. The start time points of each cycle are also determined. 
+
+```{r}
+#LANDMARK PARTITION
+
+Landmark = function(dc, w = 0.5){
+  codes = unique(dc)
+  landmark = 0
+  sum.var = 10^8
+  cycle.start = c()
+  
+  for (i in codes){
+    tf.dc = ifelse(dc == i, 1, 0)
+    tf.rle = rle(tf.dc)
+    
+    size = tf.rle$lengths[tf.rle$values ==1]
+    
+    run.start = cumsum(c(1, tf.rle$lengths))[tf.rle$values ==1]
+    recur.time = diff(run.start)
+    run.start = run.start[run.start <= length(dc)]
+    
+    if (length(size) == 1 | length (recur.time) == 1)
+      sum.var.temp = 10^8
+    else
+      sum.var.temp = (1-w)*var(size) + w * var(recur.time)
+    
+    if (sum.var > sum.var.temp){
+      sum.var = sum.var.temp
+      landmark = i
+      cycle.start = run.start
+    }
+  }
+  return (list(landmark = landmark, cycle.start = cycle.start))
+}
+```
+
+Let's do an example of Landmark and color coding.
+
+```{r}
+n = nrow(rundata)
+
+data_acc_rf = rundata[,1:3]
+names(data_acc_rf) = letters[24:26]
+data_acc_lf = rundata[,19:21]
+names(data_acc_lf) = letters[24:26]
+mrg.data_acc_lrf = rbind(data_acc_lf, data_acc_rf)
+
+hc_acc_lrf = hclust(dist(mrg.data_acc_lrf), method = "ward.D2")
+dc_acc_lrf = cutree(hc_acc_lrf, 10)
+dc_acc_lf = dc_acc_lrf[1:n]
+dc_acc_rf = dc_acc_lrf[(n+1):(2*n)]
+nc.dc_acc_lrf = mapply(function(x,y) paste(x, y, sep=","), dc_acc_lf, dc_acc_rf )
+
+Landmark(nc.dc_acc_lrf, 0.75)
+
+```
+
+Here we split the data into two parts (data_acc_lf and data_acc_rf) to represent different segments of the data. Then we performed hierarchial clustering and used cutree to cut the tree into 10 clusters and created nc.dc_acc_lrf that adds corresponding dc_acc_lf and dc_acc_rf elements. Then applied Landmark function and found our selected landmarks and cycle start times. 
+
+```{r}
+#cycle length
+diff(Landmark(nc.dc_acc_lrf, 0.75)$cycle.start)
+```
+
+Now we visualize our sample data for the LF and RF accelerometer using color coding and vertical lines representing the cycle start times. 
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+rundata$dc_acc_lf = as.factor(dc_acc_lf)
+rundata$dc_acc_rf = as.factor(dc_acc_rf)
+
+color_scheme = c("1" = "#9E0142",
+                 "2" = "#D53E4F",
+                 "3" = "#F46D43",
+                 "4" = "#FDAE61",
+                 "5" = "#FEE08B",
+                 "6" = "#E6F598",
+                 "7" = "#ABDDA4",
+                 "8" = "#66C2A5",
+                 "9" = "#3288BD",
+                 "10" = "#5E4FA2",
+                 "X" = "red", 
+                 "Y" = "green", 
+                 "Z" = "blue",
+                 "Landmark" = "black")
+
+#choose a chunk of the time series data
+start = 1
+end = 300
+sampledata = rundata[start:end,] 
+
+cycle.start = Landmark(nc.dc_acc_lrf)$cycle.start
+sample.cycle.start = cycle.start[cycle.start >= start & cycle.start <= end]
+
+#plot the right foot accelerator data with color coding
+p_acc_rf = ggplot(sampledata, aes(x = start:end)) +
+  geom_vline(aes(xintercept = seq(start, end), color = dc_acc_rf), 
+             linetype = "dotted", size = 0.75) +          
+  geom_line(aes(y = acc_rf_x, color = "X")) +
+  geom_line(aes(y = acc_rf_y, color = "Y")) +
+  geom_line(aes(y = acc_rf_z, color = "Z")) +
+  geom_vline(xintercept = sample.cycle.start, size = 1) + 
+  scale_color_manual("RF acc", values = color_scheme) +
+  labs(x = "Time",
+       y = "Signal",
+       title = "RF accelerator") +
+  theme_bw() +
+  theme(legend.key.height = unit(0.5, 'cm'))
+
+#plot the left foot accelerator data with color coding
+p_acc_lf = ggplot(sampledata, aes(x = start:end)) +
+  geom_vline(aes(xintercept = seq(start, end), color = dc_acc_lf), 
+             linetype = "dotted", size = 0.75) +              
+  geom_line(aes(y = acc_lf_x, color = "X")) +
+  geom_line(aes(y = acc_lf_y, color = "Y")) +
+  geom_line(aes(y = acc_lf_z, color = "Z")) +
+  geom_vline(xintercept = sample.cycle.start, size = 1) +
+  scale_color_manual("LF acc", values = color_scheme) +
+  labs(x = "Time",
+       y = "Signal",
+       title = "LF accelerator") +
+  theme_bw() +
+  theme(legend.key.height = unit(0.5, 'cm'))
+
+grid.arrange(p_acc_rf, p_acc_lf, ncol = 1)
+```
+
+Now let's visualize a single cycle. 
+
+```{r}
+start = cycle.start[1]
+end = cycle.start[2] - 1
+cycle.length = diff(cycle.start)[1]
+
+# create a data frame saving the 2-dim coordinates of points and corresponding states
+conc.cir = data.frame(
+  x_lf = sin(1:cycle.length * 2 * pi /cycle.length),
+  y_lf = cos(1:cycle.length * 2 * pi /cycle.length),
+  x_rf = sin(1:cycle.length * 2 * pi /cycle.length) * 1.5,
+  y_rf = cos(1:cycle.length * 2 * pi /cycle.length) * 1.5,
+  dc_lf = as.factor(dc_acc_lf[start:end]),
+  dc_rf = as.factor(dc_acc_rf[start:end]))
+
+# graphically display the 1st gait cycle with concentric circles
+ggplot(conc.cir) +
+  geom_point(aes(x = x_lf, y = y_lf, color = dc_lf)) +
+  geom_point(aes(x = x_rf, y = y_rf, color = dc_rf)) +
+  geom_segment(aes(x = 0.05, y = 0.8, xend = 0.05, yend = 2)) +
+  geom_text(x = 0, y = 2.1, label = "Landmark", size = 5) +
+  geom_curve(x = 0.3, y = 1.7, xend = 1, yend = 1.4, curvature = -0.175,
+             arrow = arrow(length = unit(0.03, "npc"))) +
+  geom_text(x = 1.25, y = 1.25, label = "Time", size = 4, angle = -45) +
+  scale_color_manual(values = color_scheme) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+```
+Now let's visualize multiple cycles.
+
+```{r}
+library(plotly)
+library(dplyr)
+start = cycle.start[1]
+end = last(cycle.start) - 1
+
+x_lf = c()
+x_rf = c()
+y_lf = c()
+y_rf = c()
+z = c()
+num.cycle = length(cycle.start) - 1
+
+# create a data frame saving the 3-dim coordinates of points and corresponding states
+for(i in 1:num.cycle){
+  cycle.length = diff(cycle.start)[i]
+  degree = 1:cycle.length * 2 * pi /cycle.length
+  x_lf = c(x_lf, sin(degree))
+  x_rf = c(x_rf, sin(degree) * 1.5)
+  y_lf = c(y_lf, cos(degree))
+  y_rf = c(y_rf, cos(degree) * 1.5)
+  z = c(z, rep(i, cycle.length))
+}
+
+cylinder = data.frame(X = c(x_lf, x_rf),
+                      Y = c(y_lf, y_rf),
+                      Z = rep(z, 2))  
+
+cylinder$state = c(dc_acc_lf[start:end], dc_acc_rf[start:end])
+cylinder$state = as.factor(cylinder$state)
+
+# graphically display all the gait cycles with concentric cylinders
+plot_ly(cylinder, 
+        x = ~ X,
+        y = ~ Y,
+        z = ~ Z,
+        color = ~ state,
+        type = "scatter3d",
+        mode = "markers",
+        size = 0.5,
+        colors = color_scheme) 
+```
+We have now made visualizations for gait cycles by creating concentric circles for individual cycles and a 3D representation for multiple cycles. 
